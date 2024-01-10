@@ -622,11 +622,14 @@ class _GenerativeModel:
         self,
         *,
         history: Optional[List[gapic_content_types.Content]] = None,
+        response_validation: bool = True,
     ) -> "ChatSession":
         """Creates a stateful chat session.
 
         Args:
             history: Previous history to initialize the chat session.
+            response_validation: Whether to validate responses before adding
+                them to chat history. Sets `ChatSession` `raise_on_blocked`.
 
         Returns:
             A ChatSession object.
@@ -634,6 +637,7 @@ class _GenerativeModel:
         return ChatSession(
             model=self,
             history=history,
+            raise_on_blocked=response_validation,
         )
 
 
