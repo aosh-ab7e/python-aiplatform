@@ -43,24 +43,6 @@ _LOGGER = base.Logger(__name__)
 
 
 @dataclass
-class MatchNeighbor:
-    """The id and distance of a nearest neighbor match for a given query embedding.
-
-    Args:
-        id (str):
-            Required. The id of the neighbor.
-        distance (float):
-            Required. The distance to the query embedding.
-        feature_vector (List(float)):
-            Optional. The feature vector of the matching datapoint.
-    """
-
-    id: str
-    distance: float
-    feature_vector: Optional[List[float]] = None
-
-
-@dataclass
 class Namespace:
     """Namespace specifies the rules for determining the datapoints that are eligible for each matching query, overall query is an AND across namespaces.
     Args:
@@ -156,12 +138,112 @@ class NumericNamespace:
             )
         # Check operator validity
         if (
-            self.op
-            not in gca_index_v1beta1.IndexDatapoint.NumericRestriction.Operator._member_names_
-        ):
+            self.op is not None
+            and self.op not in
+            gca_index_v1beta1.IndexDatapoint.NumericRestriction.Operator._member_names_
+           ):
             raise ValueError(
                 f"Invalid operator '{self.op}'," " must be one of the valid operators."
             )
+
+
+@dataclass
+class MatchNeighbor:
+    """The id and distance of a nearest neighbor match for a given query embedding.
+
+    Args:
+        id (str):
+            Required. The id of the neighbor.
+        distance (float):
+            Required. The distance to the query embedding.
+        feature_vector (List(float)):
+            Optional. The feature vector of the matching datapoint.
+        crowding_tag (Optional[str]):
+            Optional. Crowding tag of the datapoint, the
+            number of neighbors to return in each crowding,
+            can be configured during query.
+        restricts (List[Namespace]):
+            Optional. The restricts of the matching datapoint.
+        numeric_restricts:
+            Optional. The numeric restricts of the matching datapoint.
+
+    """
+
+    id: str
+    distance: float
+    feature_vector: Optional[List[float]] = None
+    crowding_tag: Optional[str] = None
+    restricts: Optional[List[Namespace]] = None
+    numeric_restricts: Optional[List[NumericNamespace]] = None
+
+    def from_index_datapoint(
+        self, index_datapoint: gca_index_v1beta1.IndexDatapoint
+    ) -> "MatchNeighbor":
+        """Copies MatchNeighbor fields from an IndexDatapoint.
+
+        Args:
+            index_datapoint (gca_index_v1beta1.IndexDatapoint):
+                Required. An index datapoint.
+
+        Returns:
+            MatchNeighbor
+        """
+        if not index_datapoint:
+            return self
+        self.feature_vector = index_datapoint.feature_vector
+        self.crowding_tag = index_datapoint.crowding_tag.crowding_attribute
+        self.restricts = [
+            Namespace(
+                name=restrict.namespace,
+                allow_tokens=restrict.allow_list,
+                deny_tokens=restrict.deny_list,
+            )
+            for restrict in index_datapoint.restricts
+        ]
+        self.numeric_restricts = [
+            NumericNamespace(
+                name=restrict.namespace,
+                value_int=restrict.value_int if restrict.value_int else None,
+                value_float=restrict.value_float if restrict.value_float else None,
+                value_double=restrict.value_double if restrict.value_double else None,
+            )
+            for restrict in index_datapoint.numeric_restricts
+        ]
+        return self
+
+    def from_embedding(self, embedding: match_service_pb2.Embedding) -> "MatchNeighbor":
+        """Copies MatchNeighbor fields from an Embedding.
+
+        Args:
+            embedding (gca_index_v1beta1.Embedding):
+                Required. An embedding.
+
+        Returns:
+            MatchNeighbor
+        """
+        if not embedding:
+            return self
+        self.feature_vector = embedding.float_val
+        if not self.crowding_tag:
+            self.crowding_tag = str(embedding.crowding_attribute)
+        self.restricts = [
+            Namespace(
+                name=restrict.name,
+                allow_tokens=restrict.allow_tokens,
+                deny_tokens=restrict.deny_tokens,
+            )
+            for restrict in embedding.restricts
+        ]
+        self.numeric_restricts = [
+            NumericNamespace(
+                name=restrict.name if restrict.name else None,
+                value_int=restrict.value_int if restrict.value_int else None,
+                value_float=restrict.value_float if restrict.value_float else None,
+                value_double=restrict.value_double if restrict.value_double else None,
+            )
+            for restrict in embedding.numeric_restricts
+        ]
+        return self
 
 
 class MatchingEngineIndexEndpoint(base.VertexAiResourceNounWithFutureManager):
@@ -1332,10 +1414,8 @@ class MatchingEngineIndexEndpoint(base.VertexAiResourceNounWithFutureManager):
         return [
             [
                 MatchNeighbor(
-                    id=neighbor.datapoint.datapoint_id,
-                    distance=neighbor.distance,
-                    feature_vector=neighbor.datapoint.feature_vector,
-                )
+                    id=neighbor.datapoint.datapoint_id, distance=neighbor.distance
+                ).from_index_datapoint(index_datapoint=neighbor.datapoint)
                 for neighbor in embedding_neighbors.neighbors
             ]
             for embedding_neighbors in response.nearest_neighbors
@@ -1552,6 +1632,11 @@ class MatchingEngineIndexEndpoint(base.VertexAiResourceNounWithFutureManager):
                 MatchNeighbor(
                     id=embedding_neighbors.neighbor[i].id,
                     distance=embedding_neighbors.neighbor[i].distance,
+                    crowding_tag=embedding_neighbors.neighbor[i].crowding_attribute,
+                ).from_embedding(
+                    embedding=embedding_neighbors.embeddings[i]
+                    if embedding_neighbors.embeddings
+                    else None
                 )
                 for i in range(len(embedding_neighbors.neighbor))
             ]
