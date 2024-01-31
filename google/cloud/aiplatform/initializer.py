@@ -104,6 +104,7 @@ class _Config:
         self._network = None
         self._service_account = None
         self._api_endpoint = None
+        self._user_agents_to_append = []
 
     def init(
         self,
@@ -342,6 +343,9 @@ class _Config:
         """Default experiment name, if provided."""
         return metadata._experiment_tracker.experiment_name
 
+    def append_user_agent(self, user_agent: str) -> None:
+        self._user_agents_to_append.append(user_agent)
+
     def get_client_options(
         self,
         location_override: Optional[str] = None,
@@ -464,8 +468,12 @@ class _Config:
             pass
 
         user_agent = f"{constants.USER_AGENT_PRODUCT}/{gapic_version}"
-        if appended_user_agent:
-            user_agent = f"{user_agent} {' '.join(appended_user_agent)}"
+
+        if appended_user_agent is None:
+            appended_user_agent = []
+
+        user_agents_to_append = appended_user_agent + self._user_agents_to_append
+        gapic_version = f"{gapic_version} {'+'.join(user_agents_to_append)}"
 
         client_info = gapic_v1.client_info.ClientInfo(
             gapic_version=gapic_version,
