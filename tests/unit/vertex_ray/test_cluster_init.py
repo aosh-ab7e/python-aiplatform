@@ -339,7 +339,7 @@ class TestClusterManagement:
                 network=tc.ProjectConstants._TEST_VPC_NETWORK,
                 ray_version="2_1",
             )
-        e.match(regexp=r"The supported Ray version is 2_4.")
+        e.match(regexp=r"The supported Ray version are 2_4 and 2_9.")
 
     @pytest.mark.usefixtures("create_persistent_resource_exception_mock")
     def test_create_ray_cluster_state_error(self):
